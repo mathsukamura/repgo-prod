@@ -1,0 +1,60 @@
+services:
+  migrations:
+    image: mathsudev/back-repgo:latest
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://repgo:${POSTGRES_PASSWORD}@db:5432/repgo
+    volumes:
+      - ./migrate.sh:/app/migrate.sh:ro
+      - ./database.sql:/database.sql:ro
+      - ./MIGRACAO-COBRANCAS.sql:/MIGRACAO-COBRANCAS.sql:ro
+      - ./MIGRACAO-INDICACOES.sql:/MIGRACAO-INDICACOES.sql:ro
+      - ./seed.sql:/seed.sql:ro
+      - ./service-account.json:/app/service-account.json:ro
+    entrypoint: ["sh", "/app/migrate.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    image: mathsudev/back-repgo:latest
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    volumes:
+      - ./service-account.json:/app/service-account.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+
+  frontend:
+    image: mathsudev/front-repgo:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: repgo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: repgo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repgo"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
